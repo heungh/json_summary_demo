@@ -1,9 +1,136 @@
+import re
 import streamlit as st
 import json
 import boto3
 import logging
 
+def extract_percentage(text):
+    """텍스트에서 퍼센트 수치 추출"""
+    matches = re.findall(r'(\d+(?:\.\d+)?)%', text)
+    return matches
+
+def create_metric_mapping(metrics_info):
+    """수치 정보와 카테고리 매핑 테이블 생성"""
+    metric_map = {}
+    
+    for metric in metrics_info:
+        category_path = ' > '.join(metric['path'])
+        product = metric['product']
+        
+        # 퍼센트 수치 추출
+        percentages = extract_percentage(metric['description'])
+        for pct in percentages:
+            key = f"{pct}%"
+            if key not in metric_map:
+                metric_map[key] = []
+            metric_map[key].append({
+                'category_path': category_path,
+                'product': product,
+                'change': metric['change'],
+                'sales': metric['sales']
+            })
+        
+        # 매출 수치도 매핑
+        sales_key = f"{metric['sales']:,}"
+        if sales_key not in metric_map:
+            metric_map[sales_key] = []
+        metric_map[sales_key].append({
+            'category_path': category_path,
+            'product': product,
+            'change': metric['change'],
+            'sales': metric['sales']
+        })
+    
+    return metric_map
+
+def enhance_summary_with_metrics(summary_text, metric_map):
+    """요약 텍스트에 수치 출처 정보 추가"""
+    enhanced_text = summary_text
+    
+    # 퍼센트 수치에 출처 추가
+    for metric_key, sources in metric_map.items():
+        if '%' in metric_key and metric_key in enhanced_text:
+            if len(sources) == 1:
+                source = sources[0]
+                replacement = f"{metric_key}[{source['product']}]"
+                enhanced_text = enhanced_text.replace(metric_key, replacement, 1)
+    
+    return enhanced_text
+
 logger = logging.getLogger(__name__)
+
+def extract_percentage(text):
+    """텍스트에서 퍼센트 수치 추출"""
+    matches = re.findall(r'(\d+(?:\.\d+)?)%', text)
+    return matches
+
+def create_metric_mapping(metrics_info):
+    """수치 정보와 카테고리 매핑 테이블 생성"""
+    metric_map = {}
+    
+    for metric in metrics_info:
+        category_path = ' > '.join(metric['path'])
+        product = metric['product']
+        
+        # 퍼센트 수치 추출
+        percentages = extract_percentage(metric['description'])
+        for pct in percentages:
+            key = f"{pct}%"
+            if key not in metric_map:
+                metric_map[key] = []
+            metric_map[key].append({
+                'category_path': category_path,
+                'product': product,
+                'change': metric['change'],
+                'sales': metric['sales']
+            })
+        
+        # 매출 수치도 매핑
+        sales_key = f"{metric['sales']:,}"
+        if sales_key not in metric_map:
+            metric_map[sales_key] = []
+        metric_map[sales_key].append({
+            'category_path': category_path,
+            'product': product,
+            'change': metric['change'],
+            'sales': metric['sales']
+        })
+    
+    return metric_map
+
+def enhance_summary_with_metrics(summary_text, metric_map):
+    """요약 텍스트에 수치 출처 정보 추가"""
+    enhanced_text = summary_text
+    
+    # 퍼센트 수치에 출처 추가
+    for metric_key, sources in metric_map.items():
+        if '%' in metric_key and metric_key in enhanced_text:
+            if len(sources) == 1:
+                source = sources[0]
+                replacement = f"{metric_key}[{source['product']}]"
+                enhanced_text = enhanced_text.replace(metric_key, replacement, 1)
+    
+    return enhanced_text
+
+def create_structured_prompt(docs_text, category_list, enable_structured_output=False):
+    """구조화된 프롬프트 생성 (방법 2 - 선택적 보완)"""
+    base_prompt = f"""아래는 각 상품 및 카테고리 경로별 요약입니다:
+{docs_text}
+
+분석 대상 카테고리: {category_list}
+
+모든 카테고리별 핵심 트렌드와 특징을 포함하여 전체 시장 동향을 3-4문장으로 요약하세요."""
+    
+    if enable_structured_output:
+        structured_addition = """
+        
+각 수치 정보(퍼센트, 매출액 등)를 언급할 때는 다음 형식을 사용하세요:
+- 퍼센트: "25% 증가[제품명]"
+- 매출액: "2,850만원[제품명]"
+각 카테고리명을 언급할 때는 구체적인 카테고리 이름을 사용하세요."""
+        return base_prompt + structured_addition
+    
+    return base_prompt + "\n각 카테고리명을 언급할 때는 구체적인 카테고리 이름을 사용하세요."
 
 
 class BedrockClaude:
@@ -351,6 +478,9 @@ if st.button("분석 실행", key="analyze_button"):
         # Bedrock Claude 분석
         with st.spinner("Claude AI 분석 중..."):
             summary_inputs = make_summary_inputs_with_comment(metrics_info)
+            
+            # 수치 매핑 테이블 생성 (방법 1)
+            metric_map = create_metric_mapping(metrics_info)
 
             # Bedrock Claude 초기화
             claude = BedrockClaude()
@@ -366,16 +496,15 @@ if st.button("분석 실행", key="analyze_button"):
             docs_text = "\n".join(individual_summaries)
             categories = extract_categories_and_keywords(json_data)
             category_list = ", ".join(sorted(categories))
+            
+            # 구조화된 출력 옵션 (UI에서 선택 가능)
+            enable_structured = st.sidebar.checkbox("구조화된 수치 출처 표시 (실험적)", value=False)
 
-            final_prompt = f"""아래는 각 상품 및 카테고리 경로별 요약입니다:
-{docs_text}
-
-분석 대상 카테고리: {category_list}
-
-모든 카테고리별 핵심 트렌드와 특징을 포함하여 전체 시장 동향을 3-4문장으로 요약하세요. 
-각 카테고리명을 언급할 때는 구체적인 카테고리 이름을 사용하세요."""
-
+            final_prompt = create_structured_prompt(docs_text, category_list, enable_structured)
             final_summary = claude.invoke_claude(final_prompt)
+            
+            # 방법 1: 수치 매핑으로 요약 개선
+            enhanced_summary = enhance_summary_with_metrics(final_summary, metric_map)
 
         # 결과 표시
         st.subheader("분석 결과")
@@ -388,6 +517,15 @@ if st.button("분석 실행", key="analyze_button"):
             st.write("**📊 분석 카테고리**")
             for category in sorted(categories):
                 st.write(f"• {category}")
+            
+            # 수치 매핑 정보 표시
+            st.write("**🔢 수치 출처 매핑**")
+            with st.expander("수치별 제품 매핑 보기"):
+                for metric_key, sources in metric_map.items():
+                    if '%' in metric_key:  # 퍼센트만 표시
+                        st.write(f"**{metric_key}:**")
+                        for source in sources:
+                            st.write(f"  • {source['product']} ({source['category_path']})")
 
         with col1:
             st.write("**개별 상품별 요약:**")
@@ -395,11 +533,15 @@ if st.button("분석 실행", key="analyze_button"):
                 st.write(f"{i+1}. {summary}")
 
             st.write("**전체 트렌드 요약:**")
-            # 주석이 포함된 요약 생성
+            # 주석이 포함된 요약 생성 (enhanced_summary 사용)
             annotated_summary, footnotes = create_footnote_references(
-                final_summary, metrics_info
+                enhanced_summary, metrics_info
             )
             st.info(annotated_summary)
+            
+            # 수치 출처 개선 표시
+            if enhanced_summary != final_summary:
+                st.success("✅ 수치 출처 정보가 자동으로 추가되었습니다")
 
             # 주석 설명 추가
             if footnotes:

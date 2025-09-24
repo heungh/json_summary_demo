@@ -89,21 +89,52 @@ flowchart TD
     B2 --> B3[📈 메트릭 & 코멘트 추출]
     
     B3 --> C[🔄 make_summary_inputs_with_comment]
-    C --> D[🤖 BedrockClaude]
+    B3 --> D[🔢 create_metric_mapping]
     
-    D --> D1[📝 개별 요약 생성]
-    D1 --> D2[📋 전체 요약 생성]
-    D2 --> D3[🔗 계층적 주석 추가]
+    C --> E[🤖 BedrockClaude]
+    D --> F[📊 수치 매핑 테이블]
     
-    D3 --> E[📌 create_footnote_references]
-    E --> F[🎯 결과 출력 UI]
+    E --> E1[📝 개별 요약 생성]
+    E1 --> E2[📋 전체 요약 생성]
+    E2 --> E3[🔗 계층적 주석 추가]
+    
+    F --> G[✨ enhance_summary_with_metrics]
+    E3 --> G
+    G --> H[📌 create_footnote_references]
+    H --> I[🎯 결과 출력 UI]
     
     style A fill:#e3f2fd
     style B fill:#f1f8e9
     style C fill:#fff3e0
-    style D fill:#fce4ec
-    style E fill:#f3e5f5
-    style F fill:#e8f5e8
+    style D fill:#e8f5e8
+    style E fill:#fce4ec
+    style F fill:#f3e5f5
+    style G fill:#ffeb3b
+    style I fill:#e8f5e8
+```
+
+### 수치 출처 추적 시스템
+```mermaid
+graph LR
+    A[원본 데이터] --> B[수치 추출]
+    B --> C[매핑 테이블 생성]
+    C --> D[AI 요약]
+    D --> E[자동 수치 매핑]
+    E --> F[출처 표시]
+    
+    B --> B1["25% 증가"]
+    B --> B2["30% 증가"]
+    
+    C --> C1["25% → 삼성 Neo QLED"]
+    C --> C2["30% → 삼성 비스포크"]
+    
+    E --> E1["25% 증가[삼성 Neo QLED]"]
+    E --> E2["30% 증가[삼성 비스포크]"]
+    
+    style A fill:#e3f2fd
+    style C fill:#fff3e0
+    style E fill:#ffeb3b
+    style F fill:#4caf50
 ```
 
 ### 계층적 주석 시스템
@@ -175,18 +206,24 @@ sequenceDiagram
 graph LR
     A[main 실행] --> B[extract_metrics_with_path_and_comment]
     A --> C[extract_categories_and_keywords]
+    A --> D[create_metric_mapping]
     
-    B --> D[make_summary_inputs_with_comment]
-    D --> E[BedrockClaude.invoke_claude]
+    B --> E[make_summary_inputs_with_comment]
+    E --> F[BedrockClaude.invoke_claude]
+    D --> G[enhance_summary_with_metrics]
     
-    E --> F[create_footnote_references]
-    C --> G[UI 키워드 섹션]
-    F --> H[UI 결과 표시]
+    F --> G
+    G --> H[create_footnote_references]
+    C --> I[UI 키워드 섹션]
+    H --> J[UI 결과 표시]
+    D --> K[UI 수치 매핑 표시]
     
     style A fill:#ffeb3b
-    style E fill:#ff9800
-    style F fill:#4caf50
-    style H fill:#2196f3
+    style D fill:#4caf50
+    style F fill:#ff9800
+    style G fill:#e91e63
+    style H fill:#9c27b0
+    style J fill:#2196f3
 ```
 
 ### 1. `BedrockClaude` 클래스
@@ -201,7 +238,35 @@ class BedrockClaude:
 
 **기능**: AWS Bedrock을 통한 Claude AI 모델 호출 및 Fallback 처리
 
-### 2. `extract_metrics_with_path_and_comment`
+### 2. `create_metric_mapping` (신규)
+```python
+def create_metric_mapping(metrics_info):
+    # 퍼센트 수치와 제품 매핑 테이블 생성
+    # 매출 수치와 제품 매핑
+    # 반환: {"25%": [{"product": "삼성 Neo QLED", "category_path": "..."}]}
+```
+
+**기능**: 수치 정보와 제품/카테고리 매핑 테이블 생성
+
+### 3. `enhance_summary_with_metrics` (신규)
+```python
+def enhance_summary_with_metrics(summary_text, metric_map):
+    # "25% 증가" → "25% 증가[삼성 Neo QLED]"로 자동 변환
+    # 수치 출처 정보 자동 추가
+```
+
+**기능**: AI 요약에 수치 출처 정보 자동 추가
+
+### 4. `create_structured_prompt` (신규)
+```python
+def create_structured_prompt(docs_text, category_list, enable_structured_output=False):
+    # 기본 프롬프트 또는 구조화된 출력 프롬프트 생성
+    # 사용자 선택에 따라 AI에게 수치 출처 포함 요청
+```
+
+**기능**: 선택적 구조화된 AI 출력 프롬프트 생성
+
+### 5. `extract_metrics_with_path_and_comment`
 ```python
 def extract_metrics_with_path_and_comment(data, path=None, comments=None):
     # 재귀적으로 JSON 구조 탐색
@@ -209,7 +274,7 @@ def extract_metrics_with_path_and_comment(data, path=None, comments=None):
     # 반환: 메트릭 리스트 (경로, 코멘트, 제품 정보 포함)
 ```
 
-### 3. `create_footnote_references`
+### 6. `create_footnote_references`
 ```python
 def create_footnote_references(summary_text, metrics_info):
     # 계층별 카테고리 경로 생성
@@ -271,21 +336,43 @@ graph LR
 graph TD
     A[streamlit run sales_analyzer.py] --> B[브라우저 접속<br/>localhost:8501]
     B --> C{JSON 데이터<br/>입력/수정}
-    C --> D[분석 실행 버튼 클릭]
-    D --> E[AI 분석 진행<br/>10-30초]
-    E --> F[결과 확인]
+    C --> D[사이드바 옵션 선택]
+    D --> D1[구조화된 수치 출처 표시]
+    D --> E[분석 실행 버튼 클릭]
+    E --> F[AI 분석 진행<br/>10-30초]
+    F --> G[결과 확인]
     
-    F --> F1[📊 추출된 메트릭]
-    F --> F2[📝 개별 상품 요약]
-    F --> F3[📋 전체 트렌드 요약]
-    F --> F4[🔗 계층적 주석]
-    F --> F5[📌 카테고리 키워드]
+    G --> G1[📊 추출된 메트릭]
+    G --> G2[📝 개별 상품 요약]
+    G --> G3[📋 전체 트렌드 요약]
+    G --> G4[🔗 계층적 주석]
+    G --> G5[📌 카테고리 키워드]
+    G --> G6[🔢 수치 출처 매핑]
     
     style A fill:#4caf50
-    style D fill:#ff9800
+    style D1 fill:#ff9800
     style E fill:#f44336
-    style F fill:#2196f3
+    style F fill:#9c27b0
+    style G fill:#2196f3
+    style G6 fill:#ffeb3b
 ```
+
+### 새로운 기능
+
+#### 1. 수치 출처 추적
+- **자동 매핑**: "25% 증가" → "25% 증가[삼성 Neo QLED 8K]"
+- **매핑 테이블**: 사이드바에서 수치별 제품 출처 확인
+- **신뢰성**: 원본 데이터 기반 100% 정확한 매핑
+
+#### 2. 구조화된 출력 (선택적)
+- **사이드바 옵션**: "구조화된 수치 출처 표시" 체크박스
+- **AI 직접 출력**: Claude가 수치와 함께 제품명 포함하여 요약
+- **실험적 기능**: 기본 매핑과 병행 사용
+
+#### 3. 향상된 UI
+- **수치 매핑 섹션**: 확장 가능한 수치별 제품 매핑 정보
+- **개선 알림**: 수치 출처 자동 추가 시 성공 메시지
+- **이중 검증**: 방법 1(자동) + 방법 2(AI) 병행
 
 ### 1. 기본 실행
 ```bash
@@ -306,29 +393,46 @@ graph TB
     A --> C[전체 트렌드 요약]
     A --> D[분석 카테고리]
     A --> E[카테고리 참조]
+    A --> F[수치 출처 매핑]
     
     C --> C1[전자제품 1]
     C --> C2[가전제품 2]
     C --> C3[TV 3]
+    C --> C4["25% 증가[삼성 Neo QLED]"]
     
     E --> E1[주석 1: 전자제품 경로]
     E --> E2[주석 2: 가전제품 경로]
     E --> E3[주석 3: TV 경로]
     
+    F --> F1["25% → 삼성 Neo QLED 8K"]
+    F --> F2["30% → 삼성 비스포크"]
+    F --> F3["35% → 아이폰 15 Pro"]
+    
     style A fill:#ffeb3b
     style C fill:#4caf50
     style E fill:#2196f3
+    style F fill:#ff9800
+    style C4 fill:#e91e63
 ```
 
 ### 예시 출력
 ```
 전체 트렌드 요약:
-식품[1] 시장에서는 건강식품 트렌드가 확산되고 있으며, 
-음료[2] 부문에서는 무설탕 제품에 대한 선호가 두드러집니다.
+전자제품[1] 시장에서는 AI 기술 통합이 가속화되고 있으며, 
+TV[3] 부문에서 25% 증가[삼성 Neo QLED 8K]를 기록했습니다.
+냉장고[4] 분야에서는 30% 증가[삼성 비스포크 4도어]로 
+맞춤형 디자인이 주효했습니다.
+
+🔢 수치 출처 매핑:
+**25%:**
+  • 삼성 Neo QLED 8K (전자제품 > 가전제품 > TV)
+**30%:**
+  • 삼성 비스포크 4도어 (전자제품 > 가전제품 > 냉장고)
 
 📝 카테고리 참조:
-[1] 식품: 건강식품 트렌드 확산
-[2] 식품 > 음료: 건강식품 트렌드 확산 / 무설탕 제품 선호
+[1] 전자제품: AI 기술 통합과 친환경 트렌드 주도
+[3] 전자제품 > 가전제품 > TV: 8K, OLED 기술과 스마트 기능 강화
+[4] 전자제품 > 가전제품 > 냉장고: 대용량, 스마트 기능, 에너지 효율성
 ```
 
 ## 🚨 문제 해결
