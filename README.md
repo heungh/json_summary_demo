@@ -62,58 +62,132 @@ export AWS_DEFAULT_REGION=us-east-1
 ## 🏗️ 아키텍처
 
 ### 전체 시스템 아키텍처
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Streamlit UI  │───▶│  Sales Analyzer  │───▶│  AWS Bedrock    │
-│                 │    │                  │    │  Claude Models  │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                        │                       │
-         ▼                        ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   JSON Input    │    │  Data Processing │    │   AI Analysis   │
-│   Validation    │    │   & Extraction   │    │   & Summary     │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+```mermaid
+graph TB
+    A[🖥️ Streamlit UI] --> B[⚙️ Sales Analyzer]
+    B --> C[🤖 AWS Bedrock<br/>Claude Models]
+    
+    A --> D[📝 JSON Input<br/>Validation]
+    B --> E[🔄 Data Processing<br/>& Extraction]
+    C --> F[🧠 AI Analysis<br/>& Summary]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#e8f5e8
+    style E fill:#fff8e1
+    style F fill:#fce4ec
 ```
 
 ### 데이터 처리 플로우
+```mermaid
+flowchart TD
+    A[📊 JSON 입력] --> B[🔍 extract_metrics_with_path_and_comment]
+    
+    B --> B1[📂 카테고리 순회]
+    B1 --> B2[🛤️ 경로 추적]
+    B2 --> B3[📈 메트릭 & 코멘트 추출]
+    
+    B3 --> C[🔄 make_summary_inputs_with_comment]
+    C --> D[🤖 BedrockClaude]
+    
+    D --> D1[📝 개별 요약 생성]
+    D1 --> D2[📋 전체 요약 생성]
+    D2 --> D3[🔗 계층적 주석 추가]
+    
+    D3 --> E[📌 create_footnote_references]
+    E --> F[🎯 결과 출력 UI]
+    
+    style A fill:#e3f2fd
+    style B fill:#f1f8e9
+    style C fill:#fff3e0
+    style D fill:#fce4ec
+    style E fill:#f3e5f5
+    style F fill:#e8f5e8
 ```
-JSON 입력
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    extract_metrics_with_path_and_comment     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ 카테고리    │  │ 경로 추적   │  │ 메트릭 & 코멘트     │  │
-│  │ 순회        │─▶│ (path)      │─▶│ 추출               │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    make_summary_inputs_with_comment         │
-│  각 메트릭을 Claude AI 입력 형식으로 변환                    │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│                         BedrockClaude                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ 개별 요약   │  │ 전체 요약   │  │ 계층적 주석         │  │
-│  │ 생성        │─▶│ 생성        │─▶│ 추가               │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    create_footnote_references               │
-│  계층별 카테고리 주석 생성 및 텍스트 매핑                    │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-결과 출력 (UI)
+
+### 계층적 주석 시스템
+```mermaid
+graph TD
+    A[전자제품 1] --> B[가전제품 2]
+    A --> C[모바일기기 5]
+    A --> D[컴퓨터 8]
+    
+    B --> E[TV 3]
+    B --> F[냉장고 4]
+    
+    C --> G[스마트폰 6]
+    C --> H[태블릿 7]
+    
+    D --> I[노트북 9]
+    
+    style A fill:#ffcdd2
+    style B fill:#f8bbd9
+    style C fill:#f8bbd9
+    style D fill:#f8bbd9
+    style E fill:#c8e6c9
+    style F fill:#c8e6c9
+    style G fill:#c8e6c9
+    style H fill:#c8e6c9
+    style I fill:#c8e6c9
+```
+
+### Claude AI 처리 흐름
+```mermaid
+sequenceDiagram
+    participant U as 사용자
+    participant S as Streamlit UI
+    participant A as Sales Analyzer
+    participant C4 as Claude 4.0
+    participant C3 as Claude 3.7
+    
+    U->>S: JSON 데이터 입력
+    S->>A: 데이터 전달
+    A->>A: 메트릭 추출 & 경로 생성
+    
+    loop 각 제품별
+        A->>C4: 개별 요약 요청
+        alt Claude 4.0 성공
+            C4->>A: 요약 반환
+        else Claude 4.0 실패
+            A->>C3: Fallback 요청
+            C3->>A: 요약 반환
+        end
+    end
+    
+    A->>C4: 전체 요약 요청
+    alt Claude 4.0 성공
+        C4->>A: 전체 요약 반환
+    else Claude 4.0 실패
+        A->>C3: Fallback 요청
+        C3->>A: 전체 요약 반환
+    end
+    
+    A->>A: 주석 생성 & 매핑
+    A->>S: 최종 결과 반환
+    S->>U: UI에 결과 표시
 ```
 
 ## 🔧 주요 함수 분석
+
+### 함수 관계도
+```mermaid
+graph LR
+    A[main 실행] --> B[extract_metrics_with_path_and_comment]
+    A --> C[extract_categories_and_keywords]
+    
+    B --> D[make_summary_inputs_with_comment]
+    D --> E[BedrockClaude.invoke_claude]
+    
+    E --> F[create_footnote_references]
+    C --> G[UI 키워드 섹션]
+    F --> H[UI 결과 표시]
+    
+    style A fill:#ffeb3b
+    style E fill:#ff9800
+    style F fill:#4caf50
+    style H fill:#2196f3
+```
 
 ### 1. `BedrockClaude` 클래스
 ```python
@@ -135,42 +209,12 @@ def extract_metrics_with_path_and_comment(data, path=None, comments=None):
     # 반환: 메트릭 리스트 (경로, 코멘트, 제품 정보 포함)
 ```
 
-**플로우**:
-```
-JSON 입력 → 재귀 탐색 → 경로 추적 → 메트릭 추출 → 구조화된 데이터 반환
-```
-
-### 3. `extract_categories_and_keywords`
-```python
-def extract_categories_and_keywords(data, categories=None):
-    # 모든 카테고리명 추출 (중복 제거)
-    # UI 키워드 섹션용 데이터 생성
-```
-
-### 4. `create_footnote_references`
+### 3. `create_footnote_references`
 ```python
 def create_footnote_references(summary_text, metrics_info):
     # 계층별 카테고리 경로 생성
     # 주석 번호 할당 (계층 순서대로)
     # 텍스트 내 카테고리명에 주석 추가
-```
-
-**계층적 주석 시스템**:
-```
-전자제품[1]                    ← 최상위
-├── 가전제품[2]                ← 중간 계층
-│   ├── TV[3]                 ← 세부 항목
-│   └── 냉장고[4]
-└── 모바일기기[5]
-    ├── 스마트폰[6]
-    └── 태블릿[7]
-```
-
-### 5. `make_summary_inputs_with_comment`
-```python
-def make_summary_inputs_with_comment(metrics_info):
-    # 메트릭 정보를 Claude AI 입력 형식으로 변환
-    # 경로, 코멘트, 제품 정보를 하나의 문자열로 결합
 ```
 
 ## 📊 데이터 구조
@@ -204,22 +248,44 @@ def make_summary_inputs_with_comment(metrics_info):
 }
 ```
 
-### 내부 데이터 구조
-```python
-metrics_info = [
-    {
-        "path": ["전자제품", "가전제품", "TV"],
-        "comments": ["시장 전반 코멘트", "중간 계층 코멘트", "세부 카테고리 코멘트"],
-        "product": "삼성 Neo QLED 8K",
-        "sales": 2850,
-        "change": "increase",
-        "description": "AI 화질 개선과 게이밍 기능으로 25% 증가",
-        "product_comment": "프리미엄 시장 선도"
-    }
-]
+### 데이터 변환 과정
+```mermaid
+graph LR
+    A[JSON 입력] --> B[메트릭 추출]
+    B --> C[경로 & 코멘트<br/>매핑]
+    C --> D[AI 입력 형식<br/>변환]
+    D --> E[요약 생성]
+    E --> F[주석 추가]
+    F --> G[UI 출력]
+    
+    style A fill:#e3f2fd
+    style D fill:#fff3e0
+    style E fill:#fce4ec
+    style G fill:#e8f5e8
 ```
 
 ## 🎯 사용 방법
+
+### 실행 플로우
+```mermaid
+graph TD
+    A[streamlit run sales_analyzer.py] --> B[브라우저 접속<br/>localhost:8501]
+    B --> C{JSON 데이터<br/>입력/수정}
+    C --> D[분석 실행 버튼 클릭]
+    D --> E[AI 분석 진행<br/>10-30초]
+    E --> F[결과 확인]
+    
+    F --> F1[📊 추출된 메트릭]
+    F --> F2[📝 개별 상품 요약]
+    F --> F3[📋 전체 트렌드 요약]
+    F --> F4[🔗 계층적 주석]
+    F --> F5[📌 카테고리 키워드]
+    
+    style A fill:#4caf50
+    style D fill:#ff9800
+    style E fill:#f44336
+    style F fill:#2196f3
+```
 
 ### 1. 기본 실행
 ```bash
@@ -231,52 +297,27 @@ streamlit run sales_analyzer.py
 http://localhost:8501
 ```
 
-### 3. 사용 단계
-
-#### Step 1: JSON 데이터 입력
-- 기본 샘플 데이터가 제공됨
-- 또는 사용자 정의 JSON 데이터 입력
-
-#### Step 2: 분석 실행
-- "분석 실행" 버튼 클릭
-- AI 분석 진행 (약 10-30초 소요)
-
-#### Step 3: 결과 확인
-- **추출된 메트릭**: 각 제품별 상세 정보
-- **개별 상품별 요약**: 제품별 AI 요약
-- **전체 트렌드 요약**: 계층적 주석이 포함된 종합 분석
-- **분석 카테고리**: 키워드 목록
-- **카테고리 참조**: 주석 설명
-
 ## 📝 사용 예시
 
-### 예시 1: 기본 분석
-```python
-# 기본 샘플 데이터로 분석 실행
-# 결과: 전자제품 시장 전반 트렌드 분석
-```
-
-### 예시 2: 커스텀 데이터
-```json
-{
-  "category": "식품",
-  "comment": "건강식품 트렌드 확산",
-  "subcategories": [
-    {
-      "category": "음료",
-      "comment": "무설탕 제품 선호",
-      "metrics": [
-        {
-          "product": "제로콜라",
-          "sales": 1500,
-          "change": "increase",
-          "description": "건강 트렌드로 20% 증가",
-          "comment": "젊은층 선호"
-        }
-      ]
-    }
-  ]
-}
+### 예시 출력 구조
+```mermaid
+graph TB
+    A[분석 결과] --> B[개별 상품별 요약]
+    A --> C[전체 트렌드 요약]
+    A --> D[분석 카테고리]
+    A --> E[카테고리 참조]
+    
+    C --> C1[전자제품 1]
+    C --> C2[가전제품 2]
+    C --> C3[TV 3]
+    
+    E --> E1[주석 1: 전자제품 경로]
+    E --> E2[주석 2: 가전제품 경로]
+    E --> E3[주석 3: TV 경로]
+    
+    style A fill:#ffeb3b
+    style C fill:#4caf50
+    style E fill:#2196f3
 ```
 
 ### 예시 출력
@@ -290,68 +331,40 @@ http://localhost:8501
 [2] 식품 > 음료: 건강식품 트렌드 확산 / 무설탕 제품 선호
 ```
 
-## 🔍 고급 기능
-
-### 1. 계층적 주석 시스템
-- 언급되는 계층 수준에 따라 적절한 주석 제공
-- 최상위 → 중간 → 세부 순서로 주석 번호 할당
-
-### 2. AI 모델 Fallback
-- Claude 4.0 실패 시 자동으로 Claude 3.7로 전환
-- 안정적인 서비스 제공
-
-### 3. 반응형 UI
-- 2컬럼 레이아웃: 메인 분석 + 키워드 섹션
-- 확장 가능한 제품 상세 정보
-
 ## 🚨 문제 해결
 
-### 일반적인 오류
-
-#### 1. AWS 인증 오류
+### 오류 해결 플로우
+```mermaid
+graph TD
+    A[오류 발생] --> B{오류 유형}
+    
+    B -->|AWS 인증| C[aws configure 실행]
+    B -->|Bedrock 액세스| D[AWS 콘솔에서<br/>모델 액세스 요청]
+    B -->|JSON 형식| E[JSON 유효성 검사]
+    B -->|네트워크| F[인터넷 연결 확인]
+    
+    C --> G[재실행]
+    D --> G
+    E --> G
+    F --> G
+    
+    style A fill:#f44336
+    style G fill:#4caf50
 ```
-Error: Unable to locate credentials
-```
-**해결책**: AWS 자격 증명 재설정
-```bash
-aws configure
-```
-
-#### 2. Bedrock 모델 액세스 오류
-```
-Error: Access denied to model
-```
-**해결책**: AWS 콘솔에서 Bedrock 모델 액세스 요청
-
-#### 3. JSON 형식 오류
-```
-Error: 올바른 JSON 형식이 아닙니다
-```
-**해결책**: JSON 유효성 검사 도구 사용
-
-### 성능 최적화
-
-#### 1. 토큰 수 조정
-```python
-"max_tokens": 8192  # 더 긴 응답을 위해 증가
-```
-
-#### 2. 배치 처리
-- 대량 데이터의 경우 청크 단위로 분할 처리
 
 ## 📈 확장 가능성
 
-### 1. 추가 AI 모델 지원
-- GPT, Gemini 등 다른 모델 통합 가능
-
-### 2. 데이터 소스 확장
-- CSV, Excel, 데이터베이스 연동
-
-### 3. 시각화 기능
-- 차트, 그래프 추가
-
-### 4. 내보내기 기능
-- PDF, Word 보고서 생성
+### 확장 로드맵
+```mermaid
+graph LR
+    A[현재 버전] --> B[다중 AI 모델]
+    B --> C[데이터 소스 확장]
+    C --> D[시각화 기능]
+    D --> E[보고서 내보내기]
+    
+    style A fill:#4caf50
+    style E fill:#ff9800
+```
 
 ## 📄 라이선스
 
