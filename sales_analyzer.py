@@ -4,59 +4,6 @@ import json
 import boto3
 import logging
 
-def extract_percentage(text):
-    """텍스트에서 퍼센트 수치 추출"""
-    matches = re.findall(r'(\d+(?:\.\d+)?)%', text)
-    return matches
-
-def create_metric_mapping(metrics_info):
-    """수치 정보와 카테고리 매핑 테이블 생성"""
-    metric_map = {}
-    
-    for metric in metrics_info:
-        category_path = ' > '.join(metric['path'])
-        product = metric['product']
-        
-        # 퍼센트 수치 추출
-        percentages = extract_percentage(metric['description'])
-        for pct in percentages:
-            key = f"{pct}%"
-            if key not in metric_map:
-                metric_map[key] = []
-            metric_map[key].append({
-                'category_path': category_path,
-                'product': product,
-                'change': metric['change'],
-                'sales': metric['sales']
-            })
-        
-        # 매출 수치도 매핑
-        sales_key = f"{metric['sales']:,}"
-        if sales_key not in metric_map:
-            metric_map[sales_key] = []
-        metric_map[sales_key].append({
-            'category_path': category_path,
-            'product': product,
-            'change': metric['change'],
-            'sales': metric['sales']
-        })
-    
-    return metric_map
-
-def enhance_summary_with_metrics(summary_text, metric_map):
-    """요약 텍스트에 수치 출처 정보 추가"""
-    enhanced_text = summary_text
-    
-    # 퍼센트 수치에 출처 추가
-    for metric_key, sources in metric_map.items():
-        if '%' in metric_key and metric_key in enhanced_text:
-            if len(sources) == 1:
-                source = sources[0]
-                replacement = f"{metric_key}[{source['product']}]"
-                enhanced_text = enhanced_text.replace(metric_key, replacement, 1)
-    
-    return enhanced_text
-
 logger = logging.getLogger(__name__)
 
 def extract_percentage(text):
@@ -98,16 +45,26 @@ def create_metric_mapping(metrics_info):
     
     return metric_map
 
-def enhance_summary_with_metrics(summary_text, metric_map):
-    """요약 텍스트에 수치 출처 정보 추가"""
+def enhance_summary_with_metrics(summary_text, metric_map, footnotes=None):
+    """요약 텍스트에 수치 출처 정보 및 클릭 가능한 링크 추가"""
     enhanced_text = summary_text
     
-    # 퍼센트 수치에 출처 추가
+    # 퍼센트 수치에 출처 및 클릭 가능한 링크 추가
     for metric_key, sources in metric_map.items():
         if '%' in metric_key and metric_key in enhanced_text:
             if len(sources) == 1:
                 source = sources[0]
-                replacement = f"{metric_key}[{source['product']}]"
+                product_id = source['product'].replace(' ', '_').replace('/', '_')
+                replacement = f'{metric_key}<a href="#{product_id}" style="color: #1f77b4; text-decoration: none;">[{source["product"]}]</a>'
+                enhanced_text = enhanced_text.replace(metric_key, replacement, 1)
+    
+    # 매출 수치에 출처 및 클릭 가능한 링크 추가
+    for metric_key, sources in metric_map.items():
+        if '%' not in metric_key and ',' in metric_key and metric_key in enhanced_text:
+            if len(sources) == 1:
+                source = sources[0]
+                product_id = source['product'].replace(' ', '_').replace('/', '_')
+                replacement = f'{metric_key}<a href="#{product_id}" style="color: #1f77b4; text-decoration: none;">[{source["product"]}]</a>'
                 enhanced_text = enhanced_text.replace(metric_key, replacement, 1)
     
     return enhanced_text
@@ -119,7 +76,8 @@ def create_structured_prompt(docs_text, category_list, enable_structured_output=
 
 분석 대상 카테고리: {category_list}
 
-모든 카테고리별 핵심 트렌드와 특징을 포함하여 전체 시장 동향을 3-4문장으로 요약하세요."""
+모든 카테고리별 핵심 트렌드와 특징을 포함하여 전체 시장 동향을 3-4문장으로 요약하세요. 
+반드시 주요 수치(퍼센트 증감률, 매출액 등)를 포함하여 구체적으로 작성하세요."""
     
     if enable_structured_output:
         structured_addition = """
@@ -462,12 +420,14 @@ if st.button("분석 실행", key="analyze_button"):
         # 메트릭 추출
         metrics_info = extract_metrics_with_path_and_comment(json_data)
 
-        # 추출된 데이터 표시
+        # 추출된 데이터 표시 (앵커 포함)
         st.subheader("추출된 메트릭")
         for i, metric in enumerate(metrics_info):
+            product_id = metric['product'].replace(' ', '_').replace('/', '_')
             with st.expander(
                 f"상품 {metric['product']} - {' > '.join(metric['path'])}"
             ):
+                st.markdown(f'<div id="{product_id}"></div>', unsafe_allow_html=True)
                 st.write(f"**경로:** {' > '.join(metric['path'])}")
                 st.write(f"**매출:** {metric['sales']:,}")
                 st.write(f"**변화:** {metric['change']}")
@@ -503,8 +463,13 @@ if st.button("분석 실행", key="analyze_button"):
             final_prompt = create_structured_prompt(docs_text, category_list, enable_structured)
             final_summary = claude.invoke_claude(final_prompt)
             
-            # 방법 1: 수치 매핑으로 요약 개선
-            enhanced_summary = enhance_summary_with_metrics(final_summary, metric_map)
+            # 주석 생성 (먼저 생성해야 함)
+            annotated_summary, footnotes = create_footnote_references(
+                final_summary, metrics_info
+            )
+            
+            # 방법 1: 수치 매핑으로 요약 개선 (주석 정보 포함)
+            enhanced_summary = enhance_summary_with_metrics(annotated_summary, metric_map, footnotes)
 
         # 결과 표시
         st.subheader("분석 결과")
@@ -533,15 +498,12 @@ if st.button("분석 실행", key="analyze_button"):
                 st.write(f"{i+1}. {summary}")
 
             st.write("**전체 트렌드 요약:**")
-            # 주석이 포함된 요약 생성 (enhanced_summary 사용)
-            annotated_summary, footnotes = create_footnote_references(
-                enhanced_summary, metrics_info
-            )
-            st.info(annotated_summary)
+            # HTML로 렌더링하여 클릭 가능한 링크 표시
+            st.markdown(f'<div style="background-color: #d1ecf1; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #bee5eb;">{enhanced_summary}</div>', unsafe_allow_html=True)
             
             # 수치 출처 개선 표시
             if enhanced_summary != final_summary:
-                st.success("✅ 수치 출처 정보가 자동으로 추가되었습니다")
+                st.success("✅ 수치 출처 정보와 주석이 자동으로 추가되었습니다")
 
             # 주석 설명 추가
             if footnotes:
